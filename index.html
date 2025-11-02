@@ -221,3 +221,11 @@
   </script>
 </body>
 </html>
+<button id="watchAd" style="padding:10px 16px; border-radius:8px; background:#0ea5e9; color:#021124; font-weight:bold; cursor:pointer;">
+  Regarder une pub pour +50 pièces
+</button>
+document.getElementById('watchAd').addEventListener('click', () => {
+  state.coins += 50;
+  renderAll();
+  alert('Tu as gagné +50 pièces !');
+});

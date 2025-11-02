@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Clicker - Jeu basique</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1020;--accent:#f59e0b;--muted:#94a3b8;--glass:rgba(255,255,255,0.04)}
+    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071029 0%, #07112a 60%);color:#e6eef8;display:flex;align-items:center;justify-content:center;padding:24px}
+    .app{width:100%;max-width:980px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:12px;padding:20px;box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    .top{display:flex;gap:16px;align-items:center}
+    .left{flex:1}
+    .title{font-size:22px;font-weight:700;margin:0}
+    .subtitle{color:var(--muted);margin-top:6px;font-size:13px}
+    .bank{background:var(--card);padding:16px;border-radius:10px;margin-top:16px;display:flex;align-items:center;justify-content:space-between}
+    .coins{font-size:28px;font-weight:700}
+    .btn-click{margin:22px auto 0;display:block;background:linear-gradient(180deg,var(--accent),#d97706);border:none;padding:22px 28px;border-radius:14px;font-size:20px;font-weight:700;color:#07112a;cursor:pointer;box-shadow:0 8px 20px rgba(245,158,11,0.18)}
+    .btn-click:active{transform:translateY(2px)}
+    .controls{display:flex;gap:12px;margin-top:14px}
+    .upgrade-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:14px}
+    .card{background:var(--glass);padding:12px;border-radius:10px}
+    .upgrade-title{font-weight:700}
+    .small{font-size:13px;color:var(--muted)}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .buy{background:#0ea5e9;border:none;padding:8px 10px;border-radius:8px;color:#021124;font-weight:700;cursor:pointer}
+    .buy:disabled{opacity:0.45;cursor:not-allowed}
+    .footer{margin-top:16px;display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px}
+    .notif{position:fixed;right:20px;bottom:20px;background:#083344;padding:10px 12px;border-radius:10px;color:#dff6ff;box-shadow:0 8px 20px rgba(2,6,23,0.6)}
+    @media(max-width:640px){.top{flex-direction:column;align-items:flex-start}.btn-click{width:100%}}
+  </style>
+</head>
+<body>
+  <div class="app" role="application">
+    <div class="top">
+      <div class="left">
+        <h1 class="title">Clicker - Mini jeu</h1>
+        <div class="subtitle">Clique pour gagner des pièces, achète des améliorations et automatise la monnaie. Sauvegarde automatique.</div>
+        <div class="bank">
+          <div>
+            <div class="small">Portefeuille</div>
+            <div class="coins" id="coins">0</div>
+          </div>
+          <div style="text-align:right">
+            <div class="small">Revenu / s</div>
+            <div id="income" style="font-weight:700">0</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button id="clickBtn" class="btn-click" aria-label="Cliquez pour gagner">CLIQUE (+1)</button>
+
+    <div class="controls">
+      <div class="card" style="flex:1">
+        <div class="upgrade-title">Améliorations</div>
+        <div class="small">Augmente les gains par clic ou ajoute des auto-clics.</div>
+        <div class="upgrade-list" id="upgrades"></div>
+      </div>
+
+      <div class="card" style="width:260px">
+        <div style="font-weight:700">Actions</div>
+        <div class="small" style="margin-top:8px">Raccourci: barre d'espace pour cliquer. Sauvegarde automatique toutes les 10s.</div>
+        <div style="margin-top:10px">
+          <button id="saveBtn" class="buy">Sauvegarder</button>
+          <button id="resetBtn" class="buy" style="background:#ef4444;margin-left:8px">Réinitialiser</button>
+        </div>
+        <div style="margin-top:12px" class="small">Temps de jeu : <span id="playtime">0s</span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Version 1.0 — Jeu local (aucune donnée envoyée)</div>
+      <div>Dernière sauvegarde : <span id="lastSave">Jamais</span></div>
+    </div>
+  </div>
+
+  <div id="notif" class="notif" style="display:none">Sauvegardé</div>
+
+  <script>
+    // Jeu clicker basique
+    const state = {
+      coins: 0,
+      perClick: 1,
+      incomePerSecond: 0,
+      playSeconds: 0,
+      lastSave: null,
+      upgrades: [
+        {id:'clickBoost', name:'+1 par clic (x1)', type:'click', level:0, baseCost:10, multiplier:1},
+        {id:'clickBoost2', name:'+5 par clic', type:'click', level:0, baseCost:100, multiplier:5},
+        {id:'auto1', name:'Auto-clic (1/s)', type:'auto', level:0, baseCost:50, cps:1},
+        {id:'auto5', name:'Auto (5/s)', type:'auto', level:0, baseCost:400, cps:5}
+      ]
+    }
+
+    // Utils
+    const $ = id => document.getElementById(id)
+
+    // Load/save
+    function save(){
+      state.lastSave = new Date().toISOString()
+      localStorage.setItem('clicker_state', JSON.stringify(state))
+      $('lastSave').textContent = new Date(state.lastSave).toLocaleString()
+      showNotif('Sauvegardé')
+    }
+    function load(){
+      const raw = localStorage.getItem('clicker_state')
+      if(raw){
+        try{
+          const parsed = JSON.parse(raw)
+          Object.assign(state, parsed)
+          $('lastSave').textContent = state.lastSave ? new Date(state.lastSave).toLocaleString() : 'Jamais'
+        }catch(e){console.warn('Erreur load', e)}
+      }
+      renderAll()
+    }
+
+    function resetGame(){
+      if(!confirm('Réinitialiser la progression ?')) return
+      localStorage.removeItem('clicker_state')
+      location.reload()
+    }
+
+    // Render
+    function renderAll(){
+      $('coins').textContent = Math.floor(state.coins)
+      $('income').textContent = state.incomePerSecond.toFixed(1)
+      $('playtime').textContent = state.playSeconds + 's'
+      renderUpgrades()
+    }
+
+    function renderUpgrades(){
+      const container = $('upgrades')
+      container.innerHTML = ''
+      state.upgrades.forEach(u=>{
+        const cost = getUpgradeCost(u)
+        const card = document.createElement('div')
+        card.className = 'card'
+        card.innerHTML = `
+          <div class="upgrade-title">${u.name}</div>
+          <div class="small">Niveau: ${u.level}</div>
+          <div class="row" style="margin-top:8px">
+            <div class="small">Coût: ${Math.floor(cost)}</div>
+            <button class="buy" ${state.coins < cost ? 'disabled' : ''} data-id="${u.id}">Acheter</button>
+          </div>
+        `
+        container.appendChild(card)
+      })
+    }
+
+    function getUpgradeCost(u){
+      // Coût qui augmente exponentiellement
+      return u.baseCost * Math.pow(1.5, u.level)
+    }
+
+    function buyUpgrade(id){
+      const u = state.upgrades.find(x=>x.id===id)
+      const cost = getUpgradeCost(u)
+      if(state.coins < cost) return
+      state.coins -= cost
+      u.level += 1
+      // Appliquer effet
+      if(u.type==='click'){
+        state.perClick += (u.multiplier || 1)
+      }else if(u.type==='auto'){
+        state.incomePerSecond += (u.cps || 1)
+      }
+      renderAll()
+    }
+
+    // Click handling
+    $('clickBtn').addEventListener('click', ()=>{
+      state.coins += state.perClick
+      renderAll()
+    })
+
+    // Delegate for buy buttons
+    document.addEventListener('click', (e)=>{
+      if(e.target.matches('.buy') && e.target.dataset.id){
+        buyUpgrade(e.target.dataset.id)
+        renderAll()
+      }
+    })
+
+    // Keyboard shortcut
+    document.addEventListener('keydown', (e)=>{ if(e.code==='Space'){ e.preventDefault(); $('clickBtn').click() } })
+
+    // Auto income tick
+    setInterval(()=>{
+      // tick every second
+      state.coins += state.incomePerSecond
+      state.playSeconds += 1
+      renderAll()
+    }, 1000)
+
+    // Auto-save every 10s
+    setInterval(()=> save(), 10000)
+
+    // Manual save/reset
+    $('saveBtn').addEventListener('click', save)
+    $('resetBtn').addEventListener('click', resetGame)
+
+    // Notification
+    function showNotif(txt){
+      const n = $('notif')
+      n.textContent = txt
+      n.style.display = 'block'
+      clearTimeout(n._t)
+      n._t = setTimeout(()=> n.style.display = 'none', 1600)
+    }
+
+    // Init upgrades DOM and attach ids to buy buttons (render will re-create them)
+    // Extend click buy handler to support newly created buttons
+    // When buttons are recreated they'll keep dataset.id so delegate works.
+
+    // Try load saved data
+    load()
+
+    // Expose for debugging
+    window._clicker = state
+  </script>
+</body>
+</html>
